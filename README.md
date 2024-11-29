@@ -19,3 +19,5 @@ place your input games in the directory ../Tactitalyser/games
 Handle discovered attacks not to be classified as brilliancies (eg: pushing a pawn where it can be taken for free except that creates a discovery attack on the opponent's queen)
 
 Handle cases where a free capture is ignored to play something better
+
+Check for checks in the case where a threat is ignored.. if the check allows you to get away with it its not brilliant
