@@ -161,7 +161,7 @@ def sacrifices_material(fen, move, color):
     return is_piece_hanging(board, move.to_square, color)
 
 
-# Function to loop through all squares with black pieces
+# Function to get all color pieces on the board
 def get_pieces(board, color):
     squares = []
     for square in chess.SQUARES:
