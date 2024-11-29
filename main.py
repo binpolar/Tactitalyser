@@ -8,7 +8,7 @@ stockfish_path = "C:\\Users\\PC\\Desktop\\Tactitalyzer\\stockfish\\stockfish-win
 
 def main():
     games = utils.get_all_games()
-    mName = "dariocardajoli"
+    name = "name"
 
     out = "games/out.pgn"
 
@@ -18,7 +18,7 @@ def main():
         for game, moves in games:
             print("####### GAME " + str(done) + " OUT OF " + str(len(games)) + " ########")
 
-            utils.iterate_game(engine, game, moves, mName)
+            utils.iterate_game(engine, game, moves, name)
 
             if len(moves) > 0:
                 utils.save_game_to_pgn(game, out)
