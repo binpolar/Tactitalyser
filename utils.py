@@ -68,7 +68,7 @@ def compare_move_against_best_move(engine, fen, move, depth=9):
 
     best_evaluation = info["score"].relative.score()
 
-    # Analyze the position after the strange move
+    # Analyze the position after the candidate move has been played
     board.push(move)
     move_info = engine.analyse(board, chess.engine.Limit(depth=depth))
     move_evaluation = move_info["score"].relative.score()
@@ -226,7 +226,7 @@ def ignores_threats(fen, move, color):
 
 
 def check_move(engine, board, move, color):
-    # TODO: ADD OTHER CRITERIA LIKE DOES IT IGNORE A THREAT TO PLAY SOMETHING BETTER
+    # TODO: ADD OTHER CRITERIA LIKE DOES IT IGNORE A FREE CAPTURE TO PLAY SOMETHING BETTER
 
     if sacrifices_material(board.fen(), move, color):
         if compare_move_against_best_move(engine, board.fen(), move) < 60:

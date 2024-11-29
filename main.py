@@ -8,7 +8,7 @@ stockfish_path = "C:\\Users\\PC\\Desktop\\Tactitalyzer\\stockfish\\stockfish-win
 
 def main():
     games = utils.get_all_games()
-    name = "name"
+    name = "Miguel Najdorf"
 
     out = "games/out.pgn"
 
