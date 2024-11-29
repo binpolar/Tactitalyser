@@ -2,10 +2,11 @@
 
 A simple python wrapper around SF to detect brilliant moves, accepts games in pgn format and saves brilliant games in games/out.pgn
 
+Currently checks for piece sacrifices both passively by ignoring a threat and actively by straight up hanging the piece
+
 ## Table of Contents
 
 - [Installation](#installation)
-- [Usage](#usage)
 - [TODO](#TODO)
 
 ## Installation
