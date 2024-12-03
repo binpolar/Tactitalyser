@@ -69,24 +69,43 @@ def get_piece_value(board, square):
     return piece_values[board.piece_type_at(square)]
 
 
-def compare_move_against_best_move(engine, fen, move, depth=14):
+def compare_move_against_best_move(engine, fen, move, depth=18):
+
     board = chess.Board(fen)
 
     info = engine.analyse(board, chess.engine.Limit(depth=depth))
 
-    best_evaluation = info["score"].relative.score()
+    best_evaluation = info["score"].relative
 
     # Analyze the position after the candidate move has been played
     board.push(move)
     move_info = engine.analyse(board, chess.engine.Limit(depth=depth))
-    move_evaluation = move_info["score"].relative.score()
+    move_evaluation = move_info["score"].relative
     board.pop()
 
     # Check for mate situations
     if not (move_info["score"].relative.is_mate() or info["score"].relative.is_mate()):
-        return best_evaluation - (move_evaluation * -1)
-    else:
-        return 0  # TODO: see if best move leads to mate faster, can't be bothered right now
+        return best_evaluation, best_evaluation.score() - (move_evaluation.score() * -1)
+    elif best_evaluation.mate() and move_evaluation.mate():
+        if(best_evaluation.mate()<=move_evaluation.mate()):
+            #did NOT chose the fastest way to the mate, shame
+            return best_evaluation, -10 #TODO: DECIDE HOW MUCH TO PENALIZE IT
+        return best_evaluation, 0 #nice
+    elif best_evaluation.mate():
+        return best_evaluation, -999999  # move missed mate in n. shame
+    return best_evaluation, -9999999 #sacc'd da King , shame on you dawg
+
+
+def is_move_winning(engine, fen, move):
+    if move.uci() == "g1g7":
+        a = 42069
+    print("checking move: "+str(move))
+    best_eval, diff = compare_move_against_best_move(engine, fen, move)
+    if best_eval.is_mate():
+        return diff == 0
+    elif 25 > diff > -25 and best_eval.score() >= -20:
+        return True
+    return False
 
 
 def is_piece_hanging(board, square, color):
@@ -116,15 +135,19 @@ def is_piece_hanging(board, square, color):
     possible_recaps = get_legal_captures(board, square)
     can_recap_with_lower_valued_piece = False
 
+    minimum_recap_piece = (999999, 0) #piece val/move tuple
+
     for recap in possible_recaps:
-        if get_piece_value(board, recap.from_square) < get_piece_value(board, square):
+        recap_val = get_piece_value(board, recap.from_square)
+        if recap_val<minimum_recap_piece[0]:
+            minimum_recap_piece = (recap_val, recap)
+
+
+        if recap_val < get_piece_value(board, square):
             can_recap_with_lower_valued_piece = True
 
     if can_recap_with_lower_valued_piece:
         return True
-
-    if len(attackers) <= len(defenders):
-        return False
 
     # TODO: CHECK IF WE HAVE MORE THAN ONE DEFENDER, IF WE DONT HAVE ANY ITS CERTAINLY A SAC. IF NOT THEN CONTINUE
 
@@ -144,19 +167,42 @@ def is_piece_hanging(board, square, color):
     if can_only_recap_with_higher_valued_piece:
         return False
 
+    answ = False
+
+    #TODO: make it take with the lowest valued piece possible.
+    for recap in possible_recaps:
+        boardtwo = chess.Board(board.fen())
+        boardtwo.push(recap)
+        answ = is_piece_hanging(boardtwo, square, color)
+    if answ:
+        return True
+
+    return False
     # TODO: ITS A SAC!!
     return True
 
 
 # IS_PIECE_HANGING_SAFE: ALSO CHECKS IF THEY CAN ACTUALLY TAKE WITHOUT LOSING MATERIAL IMMEDIATELY, FIXES PAWN PUSHES
 # THAT ARE "SACRIFICES" THAT ARE REALLY DISCOVERED ATTACKS ON HIGHER VALUED PIECES AND STUFF
+# TODO: HANDLE POSSIBLE PROMOTIONS IF TAKES, RESULTING IN IMMEDIATE MAT GAIN.
 def is_piece_hanging_s(board, square, color):
+    turn = board.fen()
+
+    if turn == "rnbqk2r/1p1pnpbp/2p1p1p1/p2P4/2B1P3/2N5/PPP1NPPP/R1BQK2R b KQkq - 0 7":
+        a = 0
     if is_piece_hanging(board, square, color):
+
+        if not turn == board.fen():
+            print("did NOT pass the vibe check huzz")
+
         # TODO: CHECK IF TAKING THE PIECE LOSES MATERIAL
 
         # SIMULATE TAKING
         captures = get_legal_captures(board, square)
         sacced_p_value = get_piece_value(board, square)
+
+        if sacced_p_value < 2:
+            return False  # pawn lives do NOT matter
 
         is_there_good_capture = False or len(captures) == 0
 
@@ -172,13 +218,16 @@ def is_piece_hanging_s(board, square, color):
 
                 board.push(move)
                 if board.is_checkmate():
+                    if len(captures)>1: #IF TAKING IS FORCED ITS BRILLIANT
+                        is_cap_poisonous = True
+                elif board.promoted and not is_piece_hanging(board, move.to_square, color):
                     is_cap_poisonous = True
                 board.pop()
 
             opponents_pieces = get_pieces(board, not color)
             for piece in opponents_pieces:
                 # TODO: MAKE IT ALSO CHECK WHETHER IT WAS NOT HANGING BEFORE THE MOVE WAS PLAYED..
-                if is_piece_hanging(board, piece, not color) and get_piece_value(board, piece) > sacced_p_value:
+                if is_piece_hanging(board, piece, not color) and get_piece_value(board, piece) >= sacced_p_value:
                     is_cap_poisonous = True
                 else:
                     continue
@@ -186,7 +235,8 @@ def is_piece_hanging_s(board, square, color):
                 is_there_good_capture = True
 
             board.pop()
-
+        if not turn == board.fen():
+            print("did NOT pass the vibe check huzz")
         if not is_there_good_capture:
             return False
         return True
@@ -194,13 +244,12 @@ def is_piece_hanging_s(board, square, color):
 
 
 def sacrifices_material(fen, move, color):
-    if move.uci() == "f1d3":
-        a = 0
-
+    if move.uci() == "f3d4":
+        a = 42069
     board = chess.Board(fen)
 
     if board.is_en_passant(move):
-        return False  # EN PASSANT IS SIMPLY FORCED
+        return False  # EN PASSANT IS SIMPLY FORCED nah TODO: HANDLE EN PASSANT
 
     if board.is_capture(move):
         # TODO: BEFORE PUSHING THE MOVE CHECK IF IT CAPTURES A PIECE OF HIGHER OR EQUAL VALUE, IF SO ITS NOT A SAC AT
@@ -208,12 +257,9 @@ def sacrifices_material(fen, move, color):
         if get_piece_value(board, move.from_square) <= get_piece_value(board, move.to_square):
             return False
 
-        # TODO: CHECK IF PUSHING THE MOVE MAKES A DISCOVERY ATTACK ON AN HIGHER VALUED PIECE THAN THE ONE WERE MOVING OR IF OPPONENT CANT TAKE BECAUSE IF TAKES THEN AN HIGHER VALUED PIECE OF THE ONE WE MOVED IS HANGING
-
     # Make the move
     board.push(move)
-
-    return is_piece_hanging_s(board, move.to_square, color)
+    return is_piece_hanging_s(board, move.to_square, color) or ignores_threats_s(fen, move, color)
 
 
 # Function to get all color pieces on the board
@@ -226,23 +272,68 @@ def get_pieces(board, color):
     return squares
 
 
+def get_hanging_pieces(fen, color):
+    board = chess.Board(fen)
+
+    turn = board.turn
+    if turn == color:
+        board.push(
+            chess.Move.null())  # makes it the opponent's turn, possibly forfeits the opportunity to play en passant
+
+    m_pieces = get_pieces(board, color)
+    hanging_pieces = []
+
+    for square in m_pieces:
+        if is_piece_hanging(board, square, color):
+            hanging_pieces.append(square)
+    return hanging_pieces
+
+
+# IGNORES THREATS SAFE. CHECKS FOR SITUATIONS WHERE IT DOES IGNORE THREATS BUT THERE WAS NO OTHER CHOICE
+def ignores_threats_s(fen, move, color):
+    if ignores_threats(fen, move, color):
+        board = chess.Board(fen)
+
+        # TODO: ADD A CHECK TO SEE IF YOU CAN POSSIBLY RESOLVE THE THREATS IN ONE MOVE IF SO THEN CONTINUE.
+        could_have_saved_them_all = False
+        legal_moves = board.legal_moves
+
+        for m in legal_moves:
+            board.push(m)
+            num_hangs = len(get_hanging_pieces(board.fen(), color))
+            if num_hangs == 0:
+                could_have_saved_them_all = True
+            board.pop()
+
+        if not could_have_saved_them_all:
+            return False
+        return True
+    return False
+
+
 def ignores_threats(fen, move, color):
     # TODO: OK SO WE'RE HERE CUZ CURRENT MOVE IS NOT A SAC SO WE CAN OPERATE UNDER THIS ASSUMPTION: NOT REALLY A TODO
     #  BUT I LIKE THE WAY TOD0 TEXT IS HIGHLIGHTED TOD0: LOOP THROUGH ALL OUR PIECES TO SEE IF ANY OF THEM ARE
     #  HANGING AND CHECK IF MOVE DOESNT GET THEM OUT OF TROUBLE: AN ACTUAL TOD0
-    if move.uci() == "g4g3":
+
+    # IT DOES NOT IGNORE THREATS A MOVE THAT DOES WHATEVER IT TAKES TO MINIMIZE MATERIAL LOSS
+
+    if move.uci() == "h8h3":
         a = 42069
     board = chess.Board(fen)
-    m_pieces = get_pieces(board, color)
-    hanging_pieces = []
+    # TODO: CHECK IF MOVE SAVED THE HIGHEST AMOUNT OF MAT POSSIBLE
 
-    board.push(chess.Move.null())  # makes it the opponent's turn, possibly forfeits the opportunity to play en passant,
+    fen = board.fen()
+    hanging_pieces = get_hanging_pieces(board.fen(), color)
 
-    for square in m_pieces:
-        if is_piece_hanging_s(board, square, color):
-            hanging_pieces.append(square)
-    board.pop()  # REGAIN OUR EN PASSANT PRIVILEGES
+    max_hanging_piece_value_before = 0
+    for piece in hanging_pieces:
+        val = get_piece_value(board, piece)
+        if val > max_hanging_piece_value_before:
+            max_hanging_piece_value_before = val
 
+    if not board.fen() == fen:
+        print("did NOT pass the vibe check huzz")
     if len(hanging_pieces) == 0:
         return False
 
@@ -250,18 +341,16 @@ def ignores_threats(fen, move, color):
 
     board.push(move)
 
-    _m_pieces = get_pieces(board, color)
-    _hanging_pieces = []
+    _hanging_pieces = get_hanging_pieces(board.fen(), color)
 
-    for square in _m_pieces:
-        if is_piece_hanging_s(board, square, color):
-            _hanging_pieces.append(square)
+    saved_pieces = []
 
     for piece in hanging_pieces:
         if not (piece in _hanging_pieces):
             hanging_pieces.remove(piece)
+            saved_pieces.append((piece, get_piece_value(chess.Board(fen), piece)))
 
-    if len(hanging_pieces)==0:
+    if len(hanging_pieces) == 0:
         return False
 
     did_ignore_treat = True
@@ -269,11 +358,11 @@ def ignores_threats(fen, move, color):
         if not (piece in _hanging_pieces):
             did_ignore_treat = False
 
-
     # TODO: CHECK IF MOVE IGNORES THREAT TO ATTACK A PIECE OF HIGHER VALUE:
 
     board.push(chess.Move.null())  # make it our turn
     threats = get_legal_threats(board, move.to_square)
+    board.pop()
 
     max_hanging_piece_value = 0
     for piece in _hanging_pieces:
@@ -281,13 +370,31 @@ def ignores_threats(fen, move, color):
         if val > max_hanging_piece_value:
             max_hanging_piece_value = val
 
+    #TODO: MAKE IT SO THAT IT SAYS YOU PUSSIED OUT WHEN THE SUM OF THE PIECE VALUES YOU SAVED IS GREATER OR EQUAL TO THE MAX VALUED HANGING PIECE AFTER
+    pussied_out = False
+    for s_piece, s_p_val in saved_pieces:
+        if s_p_val==max_hanging_piece_value_before:
+            pussied_out = True
+    if pussied_out:
+        return False
+
     for capture in threats:
         if get_piece_value(board, capture.to_square) > max_hanging_piece_value:
-            return False  # cuz of danger levels
-
-    board.pop()
+            return False  # danger levels
+        elif get_piece_value(board, capture.to_square) <= max_hanging_piece_value and is_piece_hanging(board,
+                                                                                                       capture.to_square,
+                                                                                                       color):
+            captures = get_legal_captures(board, capture.to_square)
+            for cap in captures:
+                board.push(cap)
+                if board.is_check():
+                    return False
+                board.pop()
 
     if did_ignore_treat:
+
+        if max_hanging_piece_value < 2:
+            return False  # pawns lives matter
 
         # TODO: THIS SHOULD MEAN THAT WE IGNORED THE TREAT ON AN HANGING PIECE OF OURS. CHECK IF THE VALUE OF THE
         #  HIGHEST PIECE THREATENED IS LESS THAN THE VALUE OF THE CAPTURE IF THE MOVE IS A CAPTURE
@@ -301,25 +408,60 @@ def ignores_threats(fen, move, color):
 
             for possible_cap in threats:
                 if (get_piece_value(board, possible_cap.to_square) + mat_gain >= max_hanging_piece_value) and (
-                        is_piece_hanging(board, possible_cap.to_square)):
+                        is_piece_hanging_s(board, possible_cap.to_square, color)):
                     return False
 
+            return True
+
         elif not is_capture:
+            max_piece_hanging_after_adv = 0
+            # TODO: CHECK IF NO MATTER WHAT PIECE GETS FREELY TAKEN A PIECE OF EQUAL OR GREATER VALUE IS HANGING AND WHAT WE'RE STILL HANGING HAS A LOWER VALUE THAN THE THINK WE TOOK MINUS THE ONE HE JUST TOOK:
+            for piece in _hanging_pieces:
+                caps = get_legal_captures(board, piece)
+
+                for cap in caps:
+                    pieces = get_pieces(board, not color)
+                    board.push(cap)
+
+                    is_cap_poisonous = False
+
+                    # TODO: CHECK IF TAKING THE "SACCED" PIECE HANGS MATE
+
+                    legal_moves = board.legal_moves
+
+                    for move in legal_moves:
+
+                        board.push(move)
+                        if board.is_checkmate():
+                            is_cap_poisonous = True
+                        elif board.promoted and not is_piece_hanging(board, move.to_square, color):
+                            is_cap_poisonous = True
+                        board.pop()
+                    if is_cap_poisonous:
+                        return False
+
+                    for a_piece in pieces:
+                        val = get_piece_value(board, piece)
+                        if is_piece_hanging(board, a_piece, not color) and val > max_piece_hanging_after_adv:
+                            max_piece_hanging_after_adv = val
+                    board.pop()
+            if max_piece_hanging_after_adv > max_hanging_piece_value:
+                return False
             return True
 
     return False
 
 
 def check_move(engine, board, move, color):
-    # TODO: ADD OTHER CRITERIA LIKE DOES IT IGNORE A FREE CAPTURE TO PLAY SOMETHING BETTER
-
-    if sacrifices_material(board.fen(), move, color) or ignores_threats(board.fen(), move, color):
-
-        # TODO: CHECK IF TAKING
-
-        diff = compare_move_against_best_move(engine, board.fen(), move)
-        if 20 > diff > 0:
+    # TODO: ADD OTHER CRITERIA LIKE DOES IT IGNORE A FREE CAPTURE TO PLAY SOMETHING BETTER, ALSO LOOK FOR DESPERADOES
+    answ = sacrifices_material(board.fen(), move, color)
+    if move.uci() == "g1g7":
+        a = 42069
+    if answ:
+        print(move.uci())
+        if is_move_winning(engine, board.fen(), move):
             return True
+
     return False
 
 
@@ -350,6 +492,25 @@ def iterate_game(engine, game, moves, player, treshold=0.07):
             do_turn(engine, board, move, color, moves)
 
         board.push(move)
+
+
+import chess.pgn
+
+
+# Function to modify PGN headers
+def add_title_to_pgn(game, player_name):
+    # Modify the player's title to GM if they are the white player
+    if game.headers["White"] == player_name:
+        game.headers["WhiteTitle"] = "GM"
+        game.headers["WhiteElo"] = "9999"
+        game.headers["BlackTitle"] = "NOOB"
+        game.headers["BlackElo"] = "0"
+
+    elif game.headers["Black"] == player_name:
+        game.headers["BlackTitle"] = "GM"
+        game.headers["BlackElo"] = "9999"
+        game.headers["WhiteTitle"] = "NOOB"
+        game.headers["WhiteElo"] = "0"
 
 
 def save_game_to_pgn(game, filename):
